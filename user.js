@@ -1,17 +1,17 @@
-const db = require("./database");
+const db = require('./database');
 
 const init = async () => {
   await db.run(
-    "CREATE TABLE Users (id INTEGER PRIMARY KEY AUTOINCREMENT, name varchar(32));"
+    'CREATE TABLE Users (id INTEGER PRIMARY KEY AUTOINCREMENT, name varchar(32));'
   );
   await db.run(
-    "CREATE TABLE Friends (id INTEGER PRIMARY KEY AUTOINCREMENT, userId int, friendId int);"
+    'CREATE TABLE Friends (id INTEGER PRIMARY KEY AUTOINCREMENT, userId int, friendId int);'
   );
   const users = [];
-  const names = ["foo", "bar", "baz"];
+  const names = ['foo', 'bar', 'baz'];
   for (i = 0; i < 27000; ++i) {
     let n = i;
-    let name = "";
+    let name = '';
     for (j = 0; j < 3; ++j) {
       name += names[n % 3];
       n = Math.floor(n / 3);
@@ -37,26 +37,27 @@ const init = async () => {
       friends[j].push(i);
     });
   }
-  console.log("Init Users Table...");
+  console.log('Init Users Table...');
   await Promise.all(
     users.map((un) => db.run(`INSERT INTO Users (name) VALUES ('${un}');`))
   );
-  console.log("Init Friends Table...");
+  console.log('Init Friends Table...');
   await Promise.all(
     friends.map((list, i) => {
       return Promise.all(
         list.map((j) =>
           db.run(
-            `INSERT INTO Friends (userId, friendId) VALUES (${i + 1}, ${
-              j + 1
+            `INSERT INTO Friends (userId, friendId) VALUES (${i + 1}, ${j + 1
             });`
           )
         )
       );
     })
   );
-  console.log("Ready.");
+  console.log('Ready.');
 };
+
+// Optimized Search Route with Recursive CTE
 
 const search = async (req, res) => {
   const query = `%${req.params.query}%`;
@@ -65,45 +66,42 @@ const search = async (req, res) => {
   try {
     const results = await db.all(
       `
-      SELECT 
-        Users.id,
-        Users.name,
-        CASE
-          WHEN Friends.userId = ? THEN 1  -- Direct friend
-          WHEN Users.id = ? THEN 0  -- The user themselves
-          WHEN FriendOfFriend.friendId IS NOT NULL THEN 2  -- Friend of a friend
-          WHEN FriendOfFriendOfFriend.friendId IS NOT NULL THEN 3  -- 3rd connection
-          WHEN FriendOfFriendOfFriendOfFriend.friendId IS NOT NULL THEN 4  -- 4th connection
-          ELSE 0
-        END AS connection
-      FROM Users
-      LEFT JOIN Friends ON Users.id = Friends.friendId AND Friends.userId = ?
-      LEFT JOIN (
-        SELECT f2.friendId
-        FROM Friends f1
-        JOIN Friends f2 ON f1.friendId = f2.userId
-        WHERE f1.userId = ?
-      ) AS FriendOfFriend ON Users.id = FriendOfFriend.friendId
-      LEFT JOIN (
-        SELECT f3.friendId
-        FROM Friends f1
-        JOIN Friends f2 ON f1.friendId = f2.userId
-        JOIN Friends f3 ON f2.friendId = f3.userId
-        WHERE f1.userId = ?
-      ) AS FriendOfFriendOfFriend ON Users.id = FriendOfFriendOfFriend.friendId
-      LEFT JOIN (
-        SELECT f4.friendId
-        FROM Friends f1
-        JOIN Friends f2 ON f1.friendId = f2.userId
-        JOIN Friends f3 ON f2.friendId = f3.userId
-        JOIN Friends f4 ON f3.friendId = f4.userId
-        WHERE f1.userId = ?
-      ) AS FriendOfFriendOfFriendOfFriend ON Users.id = FriendOfFriendOfFriendOfFriend.friendId
-      WHERE Users.name LIKE ? 
-      ORDER BY Users.id
+      WITH RECURSIVE UserConnections AS (
+        SELECT 
+          Users.id,
+          Users.name,
+          CASE
+            WHEN Friends.userId = ? THEN 1  -- Direct friend
+            ELSE 0
+          END AS connection
+        FROM Users
+        LEFT JOIN Friends ON Users.id = Friends.friendId AND Friends.userId = ?
+        WHERE Users.name LIKE ? 
+
+        UNION ALL
+
+        SELECT 
+          Users.id,
+          Users.name,
+          CASE
+            WHEN Friends.userId IS NOT NULL AND UserConnections.connection = 0 THEN 2  -- Friend of a friend
+            WHEN FriendOfFriend.friendId IS NOT NULL AND UserConnections.connection = 0 THEN 3  -- Friend of a friend of a friend
+            WHEN FriendOfFriendOfFriend.friendId IS NOT NULL AND UserConnections.connection = 0 THEN 4  -- Friend of a friend of a friend of a friend
+            ELSE 0
+          END AS connection
+        FROM UserConnections
+        JOIN Friends ON UserConnections.id = Friends.userId
+        JOIN Users ON Users.id = Friends.friendId
+        LEFT JOIN Friends AS FriendOfFriend ON Users.id = FriendOfFriend.friendId
+        LEFT JOIN Friends AS FriendOfFriendOfFriend ON Users.id = FriendOfFriendOfFriend.friendId
+        WHERE Users.id <> ? AND Users.name LIKE ?
+      )
+
+      SELECT * FROM UserConnections
+      ORDER BY connection, Users.id
       LIMIT 20;
-    `,
-      [userId, userId, userId, userId, userId, query]
+      `,
+      [userId, userId, query, userId, query]
     );
 
     res.status(200).json({
@@ -112,7 +110,7 @@ const search = async (req, res) => {
     });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ success: false, error: "Internal Server Error" });
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
   }
 };
 
@@ -124,16 +122,16 @@ const addFriend = async (req, res) => {
   try {
     // Check if they are not already friends
     const areFriends = await db.get(
-      "SELECT 1 FROM Friends WHERE userId = ? AND friendId = ?",
+      'SELECT 1 FROM Friends WHERE userId = ? AND friendId = ?',
       [userId, friendId]
     );
     if (!areFriends) {
       // Add friend relationship
-      await db.run("INSERT INTO Friends (userId, friendId) VALUES (?, ?)", [
+      await db.run('INSERT INTO Friends (userId, friendId) VALUES (?, ?)', [
         userId,
         friendId,
       ]);
-      await db.run("INSERT INTO Friends (userId, friendId) VALUES (?, ?)", [
+      await db.run('INSERT INTO Friends (userId, friendId) VALUES (?, ?)', [
         friendId,
         userId,
       ]); // bidirectional friendship
@@ -142,7 +140,7 @@ const addFriend = async (req, res) => {
     res.status(200).json({ success: true });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ success: false, error: "Internal Server Error" });
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
   }
 };
 
@@ -153,11 +151,11 @@ const removeFriend = async (req, res) => {
 
   try {
     // Remove friend relationship
-    await db.run("DELETE FROM Friends WHERE userId = ? AND friendId = ?", [
+    await db.run('DELETE FROM Friends WHERE userId = ? AND friendId = ?', [
       userId,
       friendId,
     ]);
-    await db.run("DELETE FROM Friends WHERE userId = ? AND friendId = ?", [
+    await db.run('DELETE FROM Friends WHERE userId = ? AND friendId = ?', [
       friendId,
       userId,
     ]); // bidirectional friendship
@@ -165,7 +163,7 @@ const removeFriend = async (req, res) => {
     res.status(200).json({ success: true });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ success: false, error: "Internal Server Error" });
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
   }
 };
 
