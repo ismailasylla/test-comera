@@ -59,7 +59,7 @@ const init = async () => {
 };
 
 const search = async (req, res) => {
-  const query = req.params.query;
+  const query = `%${req.params.query}%`;
   const userId = parseInt(req.params.userId);
 
   try {
@@ -68,22 +68,42 @@ const search = async (req, res) => {
       SELECT 
         Users.id,
         Users.name,
-        COALESCE(Friends.connection, 0) AS connection
+        CASE
+          WHEN Friends.userId = ? THEN 1  -- Direct friend
+          WHEN Users.id = ? THEN 0  -- The user themselves
+          WHEN FriendOfFriend.friendId IS NOT NULL THEN 2  -- Friend of a friend
+          WHEN FriendOfFriendOfFriend.friendId IS NOT NULL THEN 3  -- 3rd connection
+          WHEN FriendOfFriendOfFriendOfFriend.friendId IS NOT NULL THEN 4  -- 4th connection
+          ELSE 0
+        END AS connection
       FROM Users
+      LEFT JOIN Friends ON Users.id = Friends.friendId AND Friends.userId = ?
       LEFT JOIN (
-        SELECT 
-          friendId,
-          CASE
-            WHEN userId = ? THEN 1
-            WHEN userId IS NULL THEN 2
-            ELSE 3
-          END AS connection
-        FROM Friends
-      ) AS Friends ON Users.id = Friends.friendId
-      WHERE Users.name LIKE ? AND (Users.id != ? OR Users.id IS NULL)
+        SELECT f2.friendId
+        FROM Friends f1
+        JOIN Friends f2 ON f1.friendId = f2.userId
+        WHERE f1.userId = ?
+      ) AS FriendOfFriend ON Users.id = FriendOfFriend.friendId
+      LEFT JOIN (
+        SELECT f3.friendId
+        FROM Friends f1
+        JOIN Friends f2 ON f1.friendId = f2.userId
+        JOIN Friends f3 ON f2.friendId = f3.userId
+        WHERE f1.userId = ?
+      ) AS FriendOfFriendOfFriend ON Users.id = FriendOfFriendOfFriend.friendId
+      LEFT JOIN (
+        SELECT f4.friendId
+        FROM Friends f1
+        JOIN Friends f2 ON f1.friendId = f2.userId
+        JOIN Friends f3 ON f2.friendId = f3.userId
+        JOIN Friends f4 ON f3.friendId = f4.userId
+        WHERE f1.userId = ?
+      ) AS FriendOfFriendOfFriendOfFriend ON Users.id = FriendOfFriendOfFriendOfFriend.friendId
+      WHERE Users.name LIKE ? 
+      ORDER BY Users.id
       LIMIT 20;
     `,
-      [userId, `${query}%`, userId]
+      [userId, userId, userId, userId, userId, query]
     );
 
     res.status(200).json({
