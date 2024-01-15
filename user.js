@@ -115,4 +115,57 @@ const search = async (req, res) => {
   }
 };
 
+// Function to add a friend
+const addFriend = async (req, res) => {
+  const userId = parseInt(req.params.userId);
+  const friendId = parseInt(req.params.friendId);
+
+  try {
+    // Check if they are not already friends
+    const areFriends = await db.get(
+      "SELECT 1 FROM Friends WHERE userId = ? AND friendId = ?",
+      [userId, friendId]
+    );
+    if (!areFriends) {
+      // Add friend relationship
+      await db.run("INSERT INTO Friends (userId, friendId) VALUES (?, ?)", [
+        userId,
+        friendId,
+      ]);
+      await db.run("INSERT INTO Friends (userId, friendId) VALUES (?, ?)", [
+        friendId,
+        userId,
+      ]); // bidirectional friendship
+    }
+
+    res.status(200).json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, error: "Internal Server Error" });
+  }
+};
+
+// Function to remove a friend
+const removeFriend = async (req, res) => {
+  const userId = parseInt(req.params.userId);
+  const friendId = parseInt(req.params.friendId);
+
+  try {
+    // Remove friend relationship
+    await db.run("DELETE FROM Friends WHERE userId = ? AND friendId = ?", [
+      userId,
+      friendId,
+    ]);
+    await db.run("DELETE FROM Friends WHERE userId = ? AND friendId = ?", [
+      friendId,
+      userId,
+    ]); // bidirectional friendship
+
+    res.status(200).json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, error: "Internal Server Error" });
+  }
+};
+
 module.exports.search = search;
