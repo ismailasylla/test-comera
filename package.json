@@ -6,6 +6,6 @@
     "sqlite3": "^5.0.2"
   },
   "scripts": {
-    "start": "node index.js"
+    "start": "node --max-old-space-size=4096 index.js"
   }
 }
