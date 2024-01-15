@@ -57,7 +57,6 @@ const init = async () => {
   );
   console.log("Ready.");
 };
-module.exports.init = init;
 
 const search = async (req, res) => {
   const query = req.params.query;
@@ -102,7 +101,7 @@ const search = async (req, res) => {
       ) AS FriendOfFriendOfFriendOfFriend ON Users.id = FriendOfFriendOfFriendOfFriend.friendId
       WHERE Users.name LIKE ? LIMIT 20;
     `,
-      [userId, userId, userId, userId, userId, `${query}%`]
+      [userId, userId, userId,userId,userId, `${query}%`]
     );
 
     res.status(200).json({
@@ -168,4 +167,4 @@ const removeFriend = async (req, res) => {
   }
 };
 
-module.exports.search = search;
+module.exports = { init, search, addFriend, removeFriend };
